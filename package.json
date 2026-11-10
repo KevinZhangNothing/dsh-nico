@@ -1,0 +1,80 @@
+{
+  "name": "dsh-nico",
+  "version": "1.0.0",
+  "description": "Nico — 按住右⌘说一句，本地 AI 替我操作电脑。DSH cordis plugin: SenseVoice STT + DSH headless session + hotkey daemon.",
+  "license": "MIT",
+  "private": false,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "nico": "./bin/nico.js",
+    "nico-daemon": "./bin/nico-daemon.js"
+  },
+  "files": [
+    "lib",
+    "bin",
+    "scripts",
+    "native/binding.gyp",
+    "native/hotkey_tap.mm",
+    "native/bubble.swift",
+    "NicoDaemon.app",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins",
+        "@deepseek-ai/dsh-api-remotes"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^0.3.0"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "scripts": {
+    "setup": "node scripts/setup-rt.mjs",
+    "build": "cd native && npx --yes node-gyp rebuild",
+    "record": "node bin/nico.js record",
+    "say": "node bin/nico.js say",
+    "postinstall": "node scripts/build-native.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KevinZhangNothing/dsh-nico.git"
+  },
+  "homepage": "https://github.com/KevinZhangNothing/dsh-nico#readme",
+  "bugs": {
+    "url": "https://github.com/KevinZhangNothing/dsh-nico/issues"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "voice",
+    "stt",
+    "sensevoice",
+    "sherpa-onnx",
+    "hotkey",
+    "macos"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

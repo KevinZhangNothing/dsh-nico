@@ -1,0 +1,7 @@
+#!/bin/bash
+# NicoDaemon launcher — runs the nico daemon (right-⌘ hold-to-talk).
+export PATH=/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin:$PATH
+# Resolve the plugin root from this launcher's location (NicoDaemon.app lives
+# inside the plugin dir), so the path works for any user / install location.
+PLUGIN_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+exec node "$PLUGIN_DIR/bin/nico.js" daemon
