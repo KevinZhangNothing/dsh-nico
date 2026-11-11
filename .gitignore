@@ -1,0 +1,11 @@
+node_modules/
+native/build/
+vendor/
+*.log
+.DS_Store
+native/bubble
+
+# Python / runtime artifacts
+__pycache__/
+*.pyc
+undefined/
