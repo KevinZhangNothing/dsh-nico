@@ -19,6 +19,7 @@
     "lib",
     "bin",
     "scripts",
+    "assets/voices",
     "native/binding.gyp",
     "native/hotkey_tap.mm",
     "native/bubble.swift",

@@ -1,0 +1,67 @@
+{
+  "SSB0005": {
+    "age": "B",
+    "gender": "female",
+    "accent": "north"
+  },
+  "SSB0009": {
+    "age": "B",
+    "gender": "female",
+    "accent": "south"
+  },
+  "SSB0011": {
+    "age": "C",
+    "gender": "female",
+    "accent": "north"
+  },
+  "SSB0012": {
+    "age": "B",
+    "gender": "female",
+    "accent": "north"
+  },
+  "SSB0016": {
+    "age": "B",
+    "gender": "female",
+    "accent": "north"
+  },
+  "SSB0018": {
+    "age": "B",
+    "gender": "female",
+    "accent": "south"
+  },
+  "SSB0033": {
+    "age": "B",
+    "gender": "female",
+    "accent": "south"
+  },
+  "SSB0038": {
+    "age": "B",
+    "gender": "female",
+    "accent": "north"
+  },
+  "SSB0043": {
+    "age": "B",
+    "gender": "female",
+    "accent": "north"
+  },
+  "SSB0073": {
+    "age": "B",
+    "gender": "male",
+    "accent": "north"
+  },
+  "SSB0139": {
+    "age": "B",
+    "gender": "male",
+    "accent": "south"
+  },
+  "SSB0241": {
+    "age": "B",
+    "gender": "male",
+    "accent": "north"
+  },
+  "SSB0375": {
+    "age": "B",
+    "gender": "male",
+    "accent": "south"
+  }
+}

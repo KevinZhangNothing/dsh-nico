@@ -7,9 +7,16 @@
 //
 // Optional env: COSY_DIR (default ~/.dsh/nico/cosyvoice), PIP_INDEX_URL.
 import { spawnSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync, appendFileSync, cpSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+// This script lives in <package>/scripts/; the bundled AISHELL-3 reference
+// voices live in <package>/assets/voices/. Resolved relative to the script so
+// it works from a git checkout and from an installed npm package alike.
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
+const BUNDLED_VOICES = join(SCRIPT_DIR, '..', 'assets', 'voices')
 
 const COSY_DIR = process.env.COSY_DIR || join(homedir(), '.dsh', 'nico', 'cosyvoice')
 const SRC = join(COSY_DIR, 'src')
@@ -55,6 +62,23 @@ function main() {
     if (r.status !== 0) { console.error('[deploy] 缺少 ' + bin + '，请先安装（brew install ' + (bin === 'git' ? 'git' : 'python') + '）'); process.exit(2) }
   }
   step('0/5', 'git / python3 可用')
+
+  // 0.5 bundled AISHELL-3 reference voices → ~/.dsh/nico/cosyvoice/voices/
+  // (idempotent: copies only files missing locally)
+  if (existsSync(BUNDLED_VOICES)) {
+    const VOICES_DIR = join(COSY_DIR, 'voices')
+    mkdirSync(VOICES_DIR, { recursive: true })
+    let copied = 0
+    for (const f of readdirSync(BUNDLED_VOICES)) {
+      const src = join(BUNDLED_VOICES, f)
+      const dst = join(VOICES_DIR, f)
+      if (!existsSync(dst)) {
+        cpSync(src, dst)
+        copied++
+      }
+    }
+    log('[deploy] 参考音色：' + (copied > 0 ? '新增 ' + copied + ' 个 → ' + VOICES_DIR : '已存在，跳过'))
+  }
 
   // 1. repo checkout (shallow)
   if (!existsSync(join(SRC, 'cosyvoice'))) {
