@@ -7,7 +7,7 @@
 //
 // Optional env: COSY_DIR (default ~/.dsh/nico/cosyvoice), PIP_INDEX_URL.
 import { spawnSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync, appendFileSync, cpSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync, appendFileSync, cpSync, readdirSync, readFileSync, openSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -113,6 +113,22 @@ function main() {
     writeFileSync(reqPath, reqFixed)
     log('[deploy] 已剔除 matcha-tts 依赖（与 gradio==5.4.0 冲突，插件使用 vendored 纯 Python matcha）')
   }
+  // Patch: 设备选择支持 NICO_TTS_DEVICE=mps（Apple GPU 加速，RTF 7.2→2.8）。
+  // 上游只认 cuda/cpu；clone 后打补丁（幂等，grep 过滤防重复插入）。
+  for (const rel of ['cosyvoice/cli/model.py']) {
+    const f = join(SRC, rel)
+    try {
+      const s = readFileSync(f, 'utf8')
+      if (!s.includes('NICO_TTS_DEVICE')) {
+        const patched = s.replace(
+          /self\.device = torch\.device\('cuda' if torch\.cuda\.is_available\(\) else 'cpu'\)/g,
+          "self.device = torch.device(os.environ.get('NICO_TTS_DEVICE') or ('cuda' if torch.cuda.is_available() else 'cpu'))  # nico: MPS",
+        )
+        writeFileSync(f, patched)
+        log('[deploy] 已打 MPS 设备补丁: ' + rel)
+      }
+    } catch {}
+  }
   run(pip, ['install', '--upgrade', 'pip'], 'pip upgrade')
   run(pip, ['install', '-r', reqPath], 'pip requirements')
 
@@ -137,8 +153,11 @@ function main() {
   if (SERVE_PORT && SERVER_PY) {
     note('running', '启动服务 port=' + SERVE_PORT)
     log('[deploy] 启动服务（模型加载约 30–90s）…')
+    // 服务端 stdout/stderr 落盘 server.log：合成 INFO（rtf）与 traceback 是
+    // 排障的唯一来源，'ignore' 会把它们全丢掉（MPS instruct2 报错曾无迹可寻）。
+    const serverLog = openSync(join(COSY_DIR, 'server.log'), 'a')
     const child = spawn(join(VENV, 'bin', 'python'), [SERVER_PY, '--src', SRC, '--model-dir', MODEL, '--port', SERVE_PORT], {
-      detached: true, stdio: 'ignore',
+      detached: true, stdio: ['ignore', serverLog, serverLog],
       env: { ...process.env },
     })
     child.unref()

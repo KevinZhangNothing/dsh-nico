@@ -24,6 +24,12 @@ import time
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# nico: Apple GPU 加速（实测 RTF 7.2→2.8）；MPS 不支持的算子回退 CPU。
+# 必须在 import torch 之前设置——torch 2.3 在导入时固化 MPS 回退开关，
+# 放在后面 warmup 直接 NotImplementedError（aten::unfold_backward）。
+# setdefault：外部显式设置（如 NICO_TTS_DEVICE=cpu 排障）时不覆盖。
+os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
+os.environ.setdefault('NICO_TTS_DEVICE', 'mps')
 import numpy as np
 import torch
 
