@@ -1,12 +1,19 @@
 // hotkey_tap — native Node addon with two isolated taps:
 //   RIGHT command via ordinary flagsChanged events (never consumes them).
 //   Media play/pause via systemDefined subtype 8 (the only consumed event).
-// Ordinary keyDown/keyUp are deliberately NOT registered: keycode 16 is Y.
+// Ordinary keyDown/keyUp are deliberately NOT consumed: keycode 16 is Y.
+// Debug logging (setDebug / NICO_TAP_DEBUG=1) appends every raw event the
+// taps see to ~/.dsh/nico/tap_events.log — used to map headset buttons.
 #include <node_api.h>
 #include <CoreGraphics/CoreGraphics.h>
 #include <Cocoa/Cocoa.h>
 #include <atomic>
 #include <thread>
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
+#include <sys/stat.h>
+#include <sys/time.h>
 
 static napi_ref g_cb = nullptr;
 static CFMachPortRef g_tap = nullptr;
@@ -20,6 +27,39 @@ static std::atomic<bool> g_last{false};
 static std::atomic<int> g_kind{0};  // 0 = right command, 1 = raw media play/pause
 static std::atomic<bool> g_tap_ready{false};
 static std::atomic<bool> g_media_ready{false};
+static std::atomic<bool> g_debug{false};
+
+// Append-only debug log of raw tap events so headset button presses can be
+// mapped to NX keycodes. Off unless setDebug(true).
+static void debugLogF(const char* fmt, ...) {
+  if (!g_debug.load()) return;
+  char line[512];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(line, sizeof(line), fmt, ap);
+  va_end(ap);
+  const char* home = getenv("HOME");
+  if (!home || !home[0]) return;
+  char dir[512];
+  snprintf(dir, sizeof(dir), "%s/.dsh", home);
+  ::mkdir(dir, 0755);
+  snprintf(dir, sizeof(dir), "%s/.dsh/nico", home);
+  ::mkdir(dir, 0755);
+  char path[600];
+  snprintf(path, sizeof(path), "%s/.dsh/nico/tap_events.log", home);
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  struct tm tmBuf;
+  localtime_r(&tv.tv_sec, &tmBuf);
+  char ts[40];
+  strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tmBuf);
+  FILE* f = fopen(path, "a");
+  if (f) {
+    fprintf(f, "[%s.%03ld] %s\n", ts, (long)(tv.tv_usec / 1000), line);
+    fclose(f);
+  }
+  fprintf(stderr, "[nico-tap] %s\n", line);
+}
 
 static const int          kFlagsChanged = 12;
 static const int          kSystemDefined = 14;
@@ -34,6 +74,9 @@ static CGEventRef commandCallback(CGEventTapProxy proxy, CGEventType type,
                                   CGEventRef event, void* refcon) {
   if (type == (CGEventType)kFlagsChanged) {
     CGEventFlags flags = CGEventGetFlags(event);
+    debugLogF("flagsChanged: keycode=%lld flags=0x%llX",
+              CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode),
+              (unsigned long long)flags);
     g_last = (flags & RIGHT_CMD) != 0;
     g_kind = 0;
     g_pending.store(true);
@@ -46,6 +89,14 @@ static CGEventRef mediaCallback(CGEventTapProxy proxy, CGEventType type,
   @autoreleasepool {
     if (type == (CGEventType)kSystemDefined) {
       NSEvent *ns = [NSEvent eventWithCGEvent:event];
+      if (ns) {
+        int64_t d1 = ns.data1;
+        debugLogF("sysDefined: subtype=%ld code=%ld state=0x%02lX data1=0x%llX data2=0x%llX%s",
+                  (long)ns.subtype, (long)((d1 >> 16) & 0xFFFF),
+                  (long)((d1 >> 8) & 0xFF), (unsigned long long)ns.data1,
+                  (unsigned long long)ns.data2,
+                  (((d1 >> 16) & 0xFFFF) == kMediaPlayPause) ? " (play/pause)" : "");
+      }
       if (ns && ns.subtype == kMediaSubtype) {
         int64_t data1 = ns.data1;
         int code = (data1 >> 16) & 0xFFFF;
@@ -58,6 +109,10 @@ static CGEventRef mediaCallback(CGEventTapProxy proxy, CGEventType type,
           return nullptr;  // MediaHold replays short presses or drives Nico on hold.
         }
       }
+    } else if (type == (CGEventType)kCGEventKeyDown || type == (CGEventType)kCGEventKeyUp) {
+      debugLogF("key: %s keycode=%lld",
+                type == (CGEventType)kCGEventKeyDown ? "down" : "up",
+                CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode));
     }
   }
   return event;
@@ -77,7 +132,9 @@ static void runTap() {
   }
 
   // Media auxiliary controls require the session event tap, not the HID tap.
-  CGEventMask mediaMask = (CGEventMask)(1 << kSystemDefined);
+  // KeyDown/KeyUp are included passively so debug logging can also see
+  // headsets whose buttons surface as ordinary key events, not NX_SYSDEFINED.
+  CGEventMask mediaMask = (CGEventMask)((1 << kSystemDefined) | (1 << kCGEventKeyDown) | (1 << kCGEventKeyUp));
   g_media_tap = CGEventTapCreate((CGEventTapLocation)1, (CGEventTapPlacement)0, (CGEventTapOptions)0,
                                  mediaMask, mediaCallback, nullptr);
   if (g_media_tap) {
@@ -189,6 +246,19 @@ static napi_value PostPlayPause(napi_env env, napi_callback_info info) {
   return value;
 }
 
+static napi_value SetDebug(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value argv[1];
+  napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
+  bool v = false;
+  if (argc >= 1) napi_get_value_bool(env, argv[0], &v);
+  g_debug.store(v);
+  debugLogF("debug %s", v ? "on" : "off");
+  napi_value value;
+  napi_get_boolean(env, true, &value);
+  return value;
+}
+
 static napi_value Stop(napi_env env, napi_callback_info info) {
   teardown();
   if (g_cb) { napi_delete_reference(env, g_cb); g_cb = nullptr; }
@@ -204,9 +274,10 @@ static napi_value Init(napi_env env, napi_value exports) {
     { "mediaReady", nullptr, MediaReady, nullptr, nullptr, nullptr, napi_default, nullptr },
     { "drain", nullptr, Drain, nullptr, nullptr, nullptr, napi_default, nullptr },
     { "postPlayPause", nullptr, PostPlayPause, nullptr, nullptr, nullptr, napi_default, nullptr },
+    { "setDebug", nullptr, SetDebug, nullptr, nullptr, nullptr, napi_default, nullptr },
     { "stop", nullptr, Stop, nullptr, nullptr, nullptr, napi_default, nullptr },
   };
-  napi_define_properties(env, exports, 6, props);
+  napi_define_properties(env, exports, 7, props);
   // No napi_add_env_cleanup_hook: it asserted on repeated host reloads.
   return exports;
 }

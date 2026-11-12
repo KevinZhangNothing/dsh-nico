@@ -44,6 +44,7 @@ dsh 把会话绑定到记录时的 cwd（`session … was recorded in "/Users/ke
 - 构建：`npm run build`（即 `cd native && npx --yes node-gyp rebuild`）。
 - `lib/hotkey.mjs` 先尝试加载 `native/build/{Release,Debug}/hotkey_tap.node`；缺失时回退 JXA/osascript。
 - TCC 输入监控归属**责任父进程**：跑在签名 `NicoDaemon.app` 下归 `app.nico.daemon`；跑在 DSH daemon（`com.deepseek.dsh`）下时，DSH 已有输入监控，tap 直接可用。
+- **tap 事件调试日志**：`NICO_TAP_DEBUG=1 nico daemon`（或调 `hotkey.setDebug(true)`）后，两个 tap 收到的**所有**原始事件（flagsChanged 的 keycode/flags、systemDefined 的 subtype/code/state、keyDown/keyUp 的 keycode）追加到 `~/.dsh/nico/tap_events.log` 并同步打 stderr。用来确认蓝牙耳机按键是否到达 Mac、对应哪个 NX code（play/pause=16，next=19，prev=18…）；若日志毫无输出，说明该指令走的是厂商私有 HID report，CGEventTap 看不到，需 `hidutil monitor` 或 IOKit HID 抓原始 report。
 
 ## 安装
 ```sh

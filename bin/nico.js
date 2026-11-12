@@ -13,7 +13,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const PLUGIN_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
-import { transcribeFile } from '../lib/stt.mjs'
+import { transcribe } from '../lib/stt.mjs'
 import { runCommand, getSid, ensureSession } from '../lib/dsh.mjs'
 import { startRecording } from '../lib/recorder.mjs'
 import { NICO_DIR, SESSION_ID_FILE } from '../lib/paths.mjs'
@@ -63,6 +63,9 @@ function doDaemon() {
       process.exit(code || 0)
     })
     voice.start()
+    // CLI has no cordis host to keep the event loop alive: the native tap's
+    // poll timer is unref'd, so pin the process here or it exits immediately.
+    setInterval(() => {}, 1 << 30)
     console.error('nico: daemon 启动中…（等待热键就绪）')
   })
 }
@@ -77,9 +80,10 @@ switch (cmd) {
   case 'say': {
     const wav = rest[0];
     if (!wav) { console.error('usage: nico say <wav>'); process.exit(2) }
-    const text = transcribeFile(wav)
-    console.error('nico: ' + text)
-    runCommandAndSpeak(text)
+    transcribe(wav).then((text) => {
+      console.error('nico: ' + text)
+      return runCommandAndSpeak(text)
+    }).catch((e) => console.error('nico: 识别失败 ' + (e && e.message || e)))
     break
   }
   case 'chat': runCommandAndSpeak(rest.join(' ')); break
