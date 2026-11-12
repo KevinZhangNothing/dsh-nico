@@ -113,6 +113,9 @@ final class RtSchemeHandler: NSObject, WKURLSchemeHandler {
 @MainActor final class Overlay: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     let charPanel: NSPanel
     let bubblePanel: NSPanel
+    // 人物窗容器：modelWeb + 原生「新会话」按钮（WKWebView 的 mouseDown 被拖拽劫持，DOM 按钮收不到点击，按钮必须是原生 NSView）。
+    let charBox: NSView
+    let newSessionButton: NSButton
     let modelWeb: DragWKWebView
     let bubbleWeb: DragWKWebView
     let frost: NSVisualEffectView
@@ -152,6 +155,8 @@ final class RtSchemeHandler: NSObject, WKURLSchemeHandler {
         bubblePanel = Self.makePanel("nico-bubble")
         modelWeb = Self.makeWeb(rt: rtRoot)
         bubbleWeb = Self.makeWeb(rt: rtRoot)
+        charBox = NSView(frame: .zero)
+        newSessionButton = NSButton(frame: .zero)
         frost = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: BUBBLE_MIN_W, height: BUBBLE_MIN_H))
         bubbleBox = NSView(frame: frost.frame)
         super.init()
@@ -172,7 +177,27 @@ final class RtSchemeHandler: NSObject, WKURLSchemeHandler {
             w.navigationDelegate = self
             w.isHidden = true                        // didFinish 后才显示，避免首帧白闪
         }
-        charPanel.contentView = modelWeb
+        // 人物窗：容器（webview 铺满 + 原生按钮钉右上角）。webview 的 mouseDown
+        // 被拖拽劫持，DOM 按钮收不到点击，所以按钮是原生 NSButton；点击经 stdout
+        // 一行 JSON {"event":"new-session"} 回传宿主插件（见 newSessionClicked）。
+        charPanel.contentView = charBox
+        charBox.addSubview(modelWeb)
+        newSessionButton.isBordered = false
+        newSessionButton.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        newSessionButton.attributedTitle = NSAttributedString(
+            string: "新会话",
+            attributes: [.foregroundColor: NSColor.white,
+                         .font: NSFont.systemFont(ofSize: 12, weight: .medium)])
+        newSessionButton.target = self
+        newSessionButton.action = #selector(newSessionClicked)
+        newSessionButton.toolTip = "结束当前会话，开启新会话"
+        newSessionButton.wantsLayer = true
+        newSessionButton.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.18).cgColor
+        newSessionButton.layer?.cornerRadius = 12
+        newSessionButton.layer?.masksToBounds = true
+        newSessionButton.autoresizingMask = [.minXMargin, .minYMargin]  // 钉右上角
+        modelWeb.autoresizingMask = [.width, .height]
+        charBox.addSubview(newSessionButton)
         modelWeb.load(URL(string: "nico:///overlay/model.html")!)
 
         // 气泡窗：容器 = 毛玻璃（受 mask 裁剪）+ 其上透明文字 webview。
@@ -229,6 +254,20 @@ final class RtSchemeHandler: NSObject, WKURLSchemeHandler {
     private static func cfg(_ env: String, _ def: CGFloat) -> CGFloat {
         if let s = ProcessInfo.processInfo.environment[env], let v = Double(s) { return CGFloat(v) }
         return def
+    }
+
+    // MARK: 新会话按钮
+
+    // container bounds 变化（show 摆位）后校一次；日常变化由 autoresizing 承担。
+    func layoutButton() {
+        let b = charBox.bounds
+        modelWeb.frame = charBox.bounds
+        newSessionButton.frame = NSRect(x: b.width - 78, y: b.height - 32, width: 70, height: 24)
+    }
+
+    @objc func newSessionClicked() {
+        // stdout 是宿主回传事件的唯一通道（stdio 'pipe'），一行一个 JSON。
+        FileHandle.standardOutput.write(Data("{\"event\":\"new-session\"}\n".utf8))
     }
 
     // MARK: 几何
@@ -353,6 +392,7 @@ final class RtSchemeHandler: NSObject, WKURLSchemeHandler {
         if let p = restorePos(), let c = clampToScreen(p) { origin = c }
         lastOrigin = origin
         charPanel.setFrame(NSRect(origin: origin, size: NSMakeSize(CHAR_W, charH(vf))), display: false)
+        layoutButton()
         let bf = bubbleFrame(for: origin, vf: vf)
         bubbleAnchor = NSPoint(x: bf.midX - (origin.x + CHAR_W / 2), y: bf.minY - origin.y)
         // bubblePanel 只摆位不 orderFront：上屏/淡入由 apply 的非 idle 分支负责——

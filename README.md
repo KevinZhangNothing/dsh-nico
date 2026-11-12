@@ -8,6 +8,7 @@ Nico — 按住右⌘说一句，本地 AI 替我操作电脑。以 DSH cordis �
 - **语音输出**：macOS `say` 朗读回复；可选 CosyVoice2 本地部署（OpenAI 兼容 /v1/audio/speech），支持情感指令与自定义音色，失败自动回退 `say`。GUI「Nico 语音」页：检测 / 下载部署（detached 子进程跑完克隆+venv+权重后自动拉起服务，进度看 `~/.dsh/nico/cosyvoice/deploy.log`，断点可续）/ 停止；GUI 通过轮询服务探针观察就绪，插件运行时零配置回写（configEditor 组合校验是 fatal，不可承载运行时写入）。
 - **右⌘ hotkey**（daemon）：按住录音、松开执行，Nico 风格。优先用原生 CGEventTap 子模块，回退 JXA。需 TCC 输入监控授权。
 - **tier-1 能力**：文件/shell 操作（整理桌面、找文件、转格式）零安装。
+- **人物窗「新会话」按钮**：人物窗右上角常驻原生按钮，点击即丢弃当前固定会话并立即建新会话（气泡确认 + 语音播报），不依赖语音指令——同音字误听时这是可靠入口。overlay 宿主 stdout 现在是事件通道（一行 JSON），插件侧 `bubbleEventHandler` 消费；`rt/bubble` 二进制按源码 mtime 自动重编译。
 - **Live2D 双窗 overlay（DeepSeek 鲸鱼娘）**：两个无边框不抢焦点的 NSPanel 各挂一个 WKWebView——人物窗常驻贴底居中，气泡窗锚在头顶（底边贴人物顶边、中心右偏 4% 屏宽）。驱动 `listening / thinking / start / speaking / end / fail` 六态（`idle` 为人物在屏待机）：listening 实时转写、thinking 困倦表情、start 点头、speaking 口型开合、end/fail 延迟淡出气泡后人物保持常驻。人物/气泡整体可拖动，位置记忆在 `~/.dsh/nico/bubble_pos.json`，重启宿主后还原；气泡为深色毛玻璃卡片（原生 NSVisualEffectView `.hudWindow` + CAShapeLayer 圆角裁剪，文字自适应宽高回传）。渲染走 `nico://` 自定义协议（WKURLSchemeHandler 供 rt/ 下文件），页面为 pixi.js + pixi-live2d-display + Cubism 4。
 - **云端 STT（可选）**：OpenAI 兼容 `/v1/audio/transcriptions`。端点与密钥**自动从宿主 DSH 模型配置读取**——先试 GUI「云端识别服务」下拉指定的 provider，再回退到当前推理模型所属 provider；无需手填 URL 或 key。
 - **推理路由**：GUI 选的 provider/model 会生成 `dsh --patch` overlay（`agent-default-model` + 条件性 provider 块），端点同样来自宿主配置，不再写死任何地址。
@@ -98,6 +99,7 @@ nico new                  # 丢弃固定会话（下一条指令开新会话）
 5. 播完 → 气泡淡出，人物常驻待机
 6. 拖动人物 → 位置记忆；重启宿主后位置保留
 7. 失败路径（无麦克风授权/执行失败）→ Shake + Failed 提示（含失败文案）后气泡收起，人物常驻
+8. 点击人物右上角「新会话」按钮 → 气泡「好的，已开启新会话。」+ 语音播报，DSH 会话列表出现新会话；旧会话原样保留
 
 ## 已知限制
 - 语音流程默认 `--approval-policy never`，遇审批门操作不会挂起，但也**不会**弹审批（危险操作按策略直接执行/拒绝）。
