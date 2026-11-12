@@ -199,7 +199,8 @@ def register_voice(model, vid, wav):
     model.frontend.spk2info[vid] = mi
 
 
-def synthesize(text: str, instruct: str | None, voice: str | None, speed: float) -> bytes:
+def synth_chunks(text: str, instruct: str | None, voice: str | None, speed: float):
+    """Yield tts_speech tensors as the model generates them (lock held throughout)."""
     model = STATE["cosyvoice"]
     with STATE["lock"]:
         pw = _resolve_prompt_wav(voice)
@@ -224,8 +225,12 @@ def synthesize(text: str, instruct: str | None, voice: str | None, speed: float)
         else:
             spk = voice or STATE["default_spk"]
             gen = model.inference_sft(text, spk, stream=stream, speed=speed)
-        chunks = list(gen)
-        speech = torch.cat([c["tts_speech"] for c in chunks], dim=1)
+        for c in gen:
+            yield c["tts_speech"]
+
+
+def synthesize(text: str, instruct: str | None, voice: str | None, speed: float) -> bytes:
+    speech = torch.cat(list(synth_chunks(text, instruct, voice, speed)), dim=1)
     if speech.shape[0] == 0:
         raise RuntimeError("synthesis produced no audio (voice=" + str(voice) + ")")
     pcm = (speech.numpy().flatten().clip(-1.0, 1.0) * 32767.0).astype(np.int16)
@@ -284,6 +289,9 @@ class Handler(BaseHTTPRequestHandler):
             instruct = instruct.strip() or None
         else:
             instruct, text = None, raw
+        if str(req.get("response_format") or "wav") == "pcm":
+            self._send_pcm_stream(text, instruct, req.get("voice"), float(req.get("speed") or 1.0))
+            return
         try:
             wav = synthesize(text, instruct, req.get("voice"), float(req.get("speed") or 1.0))
         except KeyError as exc:
@@ -293,6 +301,43 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, json.dumps({"error": str(exc)}).encode())
             return
         self._send(200, wav, "audio/wav")
+
+    def _send_pcm_stream(self, text: str, instruct: str | None, voice: str | None, speed: float) -> None:
+        """Stream raw s16le mono PCM as the model generates it (close-delimited).
+
+        Lets the client start playback on the FIRST chunk instead of waiting for
+        the full synthesis (CPU rtf ≈ 2.3 → a 4s reply previously took ~9s
+        before the first audible sample).
+        """
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/pcm;codec=s16le;rate=" + str(STATE["sample_rate"]))
+            self.send_header("X-Sample-Rate", str(STATE["sample_rate"]))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.close_connection = True
+            chunks = 0
+            for speech in synth_chunks(text, instruct, voice, speed):
+                pcm = (speech.numpy().flatten().clip(-1.0, 1.0) * 32767.0).astype(np.int16)
+                self.wfile.write(pcm.tobytes())
+                self.wfile.flush()
+                chunks += 1
+            print("pcm stream: chunks=" + str(chunks), flush=True)
+        except (BrokenPipeError, ConnectionResetError):
+            pass   # client hung up early; nothing to salvage
+        except Exception as exc:
+            print("pcm stream failed: " + repr(exc), flush=True)
+            try:
+                self.wfile.write(("ERROR " + repr(exc)).encode())
+            except Exception:
+                pass
+        finally:
+            self.close_connection = True
+            try:
+                self.wfile.flush()
+            except Exception:
+                pass
 
     def log_message(self, fmt, *args) -> None:  # silence per-request stderr noise
         pass
