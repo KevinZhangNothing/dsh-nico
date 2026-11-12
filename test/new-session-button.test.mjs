@@ -27,6 +27,19 @@ test('plugin consumes the event and rotates the session', () => {
   assert.match(dsh, /export function ensureSession/, 'eager creation primitive exists')
 })
 
+test('button follows the reported head position', () => {
+  assert.match(read('native/overlay/model.js'), /nicoHead/, 'model.js reports head position')
+  const swift = read('native/bubble.swift')
+  assert.match(swift, /name: "nicoHead"/, 'swift consumes the head message')
+  assert.match(swift, /headX/, 'layout uses the head coordinates')
+})
+
+test('ffplay device failure is a fail, not a silent ok', () => {
+  const tts = read('lib/tts.mjs')
+  assert.match(tts, /could not initialize sdl/i, 'stderr guard for SDL init failure')
+  assert.match(tts, /'pipe', 'ignore', 'pipe'/, 'stderr must be captured')
+})
+
 test('bubble binary recompiles when the swift source is newer', () => {
   const idx = read('lib/index.js')
   assert.match(idx, /mtimeMs >= statSync\(BUBBLE_SRC\)\.mtimeMs/, 'stale-binary rebuild guard')

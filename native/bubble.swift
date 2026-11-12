@@ -136,6 +136,9 @@ final class RtSchemeHandler: NSObject, WKURLSchemeHandler {
     // 双窗关系锚（与气泡宽高无关，气泡自适应缩放后仍成立）：
     //   x = bubbleCenterX - charCenterX；y = bubbleMinY - charOrigin.y
     var bubbleAnchor = NSPoint(x: 0, y: 0)
+    // 人物头顶位置（model.js fit() 后回传，画布坐标 y 向下；nil=未上报）。
+    var headX: Double?
+    var headY: Double?
     var lastOrigin: NSPoint?           // 上次已摆位/已落盘的位置；didMove 相同则非用户拖动
     var fadeGen = 0                    // 每次 apply 递增；淡出完成回调据此判断期间是否来过新 state
     var fadeWork: DispatchWorkItem?
@@ -213,6 +216,7 @@ final class RtSchemeHandler: NSObject, WKURLSchemeHandler {
         for w in [modelWeb, bubbleWeb] {
             w.configuration.userContentController.add(self, name: "nicoLog")
         }
+        modelWeb.configuration.userContentController.add(self, name: "nicoHead")
         bubbleWeb.configuration.userContentController.add(self, name: "nicoSize")
         bubbleWeb.load(URL(string: "nico:///overlay/bubble.html")!)
 
@@ -262,7 +266,17 @@ final class RtSchemeHandler: NSObject, WKURLSchemeHandler {
     func layoutButton() {
         let b = charBox.bounds
         modelWeb.frame = charBox.bounds
-        newSessionButton.frame = NSRect(x: b.width - 78, y: b.height - 32, width: 70, height: 24)
+        // 默认钉右上角；model.js 回传头顶位置后改钉头的右侧（画布 y 向下，
+        // 按钮顶边对齐头顶 → Swift 系 y 翻转换算）。人物窄时按钮贴着头。
+        var x = b.width - 76
+        var y = b.height - 30
+        if let hx = headX, let hy = headY {
+            x = CGFloat(hx) + 20
+            y = b.height - CGFloat(hy) - 26
+        }
+        x = min(max(x, 8), b.width - 70)
+        y = min(max(y, 4), b.height - 28)
+        newSessionButton.frame = NSRect(x: x, y: y, width: 62, height: 24)
     }
 
     @objc func newSessionClicked() {
@@ -360,6 +374,13 @@ final class RtSchemeHandler: NSObject, WKURLSchemeHandler {
         if message.name == "nicoLog" {
             // 渲染层诊断通道：init 失败等写到 stderr（测试/调试时可见）。
             FileHandle.standardError.write(("nicoLog: " + String(describing: message.body) + "\n").data(using: .utf8)!)
+            return
+        }
+        if message.name == "nicoHead", let d = message.body as? [String: Any],
+           let x = d["x"] as? Double, let y = d["y"] as? Double {
+            headX = x
+            headY = y
+            layoutButton()
             return
         }
         guard message.name == "nicoSize", let d = message.body as? [String: Any],

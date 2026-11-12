@@ -121,6 +121,12 @@ function fit() {
   const targetH = innerHeight * 0.95
   model.scale.set(targetH / (naturalH || model.height))
   model.position.set(innerWidth * 0.5, innerHeight * 0.99)
+  // 头部位置回传（画布坐标，y 向下）：宿主把「新会话」按钮钉在头的右侧。
+  // 人物窄而窗口宽时，钉窗角会让按钮离头很远。
+  try {
+    const b = model.getBounds()
+    window.webkit?.messageHandlers?.nicoHead?.postMessage({ x: b.x + b.width / 2, y: b.y })
+  } catch {}
 }
 window.__nico.init().catch((e) => {
   document.title = 'init-failed: ' + e.message
