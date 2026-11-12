@@ -55,8 +55,7 @@
     "setup": "node scripts/setup-rt.mjs",
     "build": "cd native && npx --yes node-gyp rebuild",
     "record": "node bin/nico.js record",
-    "say": "node bin/nico.js say",
-    "postinstall": "node scripts/build-native.mjs"
+    "say": "node bin/nico.js say"
   },
   "repository": {
     "type": "git",
