@@ -20,9 +20,11 @@
     "bin",
     "scripts",
     "assets/voices",
+    "assets/sprite",
     "native/binding.gyp",
     "native/hotkey_tap.mm",
     "native/bubble.swift",
+    "native/overlay",
     "NicoDaemon.app",
     "cordis.patch.yml",
     "README.md"

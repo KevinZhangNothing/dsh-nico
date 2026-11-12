@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- 气泡窗页面：只画文字层。深色毛玻璃背景/圆角由原生 NSVisualEffectView
+     （.hudWindow 材质）提供，容器保持透明无背景；内层 padding 让文字离圆角
+     边有安全距离。文字统一亮白，不用状态主题色（用户决策）。
+     #text 用 -webkit-line-clamp 截到 4 行，超出末尾省略号，不做静默裁切。
+     #bubble 宽高由 bubble.js 按内容量出，经 nicoSize message 回传给原生层
+     缩放窗口。 -->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden;
+               font-family: -apple-system, "PingFang SC", sans-serif; user-select: none }
+  #bubble { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+            /* border-box：style.width = 含 padding 的总宽，fitSize 量出的尺寸与窗口一致 */
+            box-sizing: border-box;
+            /* 内边距由 bubble.swift 按 NICO_BUBBLE_PAD_X/PAD_Y 注入 CSS 变量 */
+            padding: var(--nico-pady, 10px) var(--nico-padx, 14px); transition: opacity .3s }
+  #head { display: flex; gap: 8px; align-items: center; color: rgba(255,255,255,.75);
+          font-size: 11px; font-weight: 600 }
+  #hico { color: #fff }
+  #text { margin-top: 6px; font-size: 14px; line-height: 1.3; color: #fff;
+          /* 超过 4 行末尾省略号（标准写法：-webkit-box + line-clamp） */
+          display: -webkit-box; -webkit-box-orient: vertical;
+          -webkit-line-clamp: 4; overflow: hidden; text-overflow: ellipsis }
+  #hint { margin-top: 4px; font-size: 11px; color: rgba(255,255,255,.6) }
+</style>
+<div id="bubble" style="opacity:0">
+  <div id="head"><span id="hico"></span><span id="hlabel"></span></div>
+  <div id="text"></div><div id="hint"></div>
+</div>
+<script src="bubble.js"></script>

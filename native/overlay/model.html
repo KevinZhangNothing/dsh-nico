@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- 人物窗页面：只画 Live2D 画布，无气泡 DOM（气泡在 bubble.html，由原生毛玻璃窗承载） -->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden;
+               font-family: -apple-system, "PingFang SC", sans-serif; user-select: none }
+  canvas { position: absolute; bottom: 0; left: 0 }
+</style>
+<canvas id="stage"></canvas>
+<script src="live2dcubismcore.min.js"></script>
+<script src="pixi.min.js"></script>
+<script src="cubism4.min.js"></script>
+<script src="model.js"></script>
