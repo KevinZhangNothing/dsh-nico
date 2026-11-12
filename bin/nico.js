@@ -6,6 +6,7 @@
 //   nico chat <text...>               文本直发（调试）
 //   nico daemon                       常驻：右⌘ hold 录音 → say（需 TCC 授权）
 //   nico sid                          显示/创建固定会话 id
+//   nico new                          丢弃固定会话（下一条指令开新会话）
 //   nico setup                        把 sherpa-onnx 运行时从 app.asar 抽取到 ~/.dsh/nico/rt
 import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
@@ -14,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 
 const PLUGIN_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 import { transcribe } from '../lib/stt.mjs'
-import { runCommand, getSid, ensureSession } from '../lib/dsh.mjs'
+import { runCommand, getSid, ensureSession, resetSession } from '../lib/dsh.mjs'
 import { startRecording } from '../lib/recorder.mjs'
 import { NICO_DIR, SESSION_ID_FILE } from '../lib/paths.mjs'
 
@@ -88,6 +89,7 @@ switch (cmd) {
   }
   case 'chat': runCommandAndSpeak(rest.join(' ')); break
   case 'sid': console.log(getSid()); break
+  case 'new': resetSession(); console.log('nico: 已丢弃固定会话，下一条指令开新会话'); break
   case 'daemon': doDaemon(); break
   case 'setup': doSetup(); break
   default:
