@@ -5,7 +5,7 @@ Nico — 按住右⌘说一句，本地 AI 替我操作电脑。以 DSH cordis �
 ## 能力
 - **本地 STT**：SenseVoice (ONNX int8) via sherpa-onnx，16k mono，完全本地，不上传。
 - **DSH 会话**：固定 headless 会话，多轮上下文，默认 `--approval-policy never`（语音流程不挂起）。说「新会话 / 新开一个会话 / 清空会话」等即丢弃当前固定会话，下一条指令自动开新会话（旧会话保留在 DSH 会话列表里，可手动删除）；CLI 等价命令 `nico new`。会话引导语（首次建会话时发送、教会话如何理解语音指令）可在 GUI「Nico 语音」页自定义，留空用内置默认；改后删 `~/.dsh/nico/session_id` 重建会话生效。
-- **语音输出**：macOS `say` 朗读回复（新任务进入即打断：按住热键/点「新会话」/新播报开始都会立即掐掉在途播放，不再播完）；可选 CosyVoice2 本地部署（OpenAI 兼容 /v1/audio/speech），支持情感指令与自定义音色，失败自动回退 `say`。GUI「Nico 语音」页：检测 / 下载部署（detached 子进程跑完克隆+venv+权重后自动拉起服务，进度看 `~/.dsh/nico/cosyvoice/deploy.log`，断点可续）/ 停止；GUI 通过轮询服务探针观察就绪，插件运行时零配置回写（configEditor 组合校验是 fatal，不可承载运行时写入）。
+- **语音输出**：macOS `say` 朗读回复（新任务进入即打断：按住热键/点「新会话」/新播报开始都会立即掐掉在途播放，不再播完）；CosyVoice 路径主用 afplay wav（CoreAudio 原生，宿主可听）；ffplay 流式播放（首包即响，延迟更低）在宿主进程里实测静音且无报错，降级为实验路径，`NICO_TTS_STREAM=1` 开启；可选 CosyVoice2 本地部署（OpenAI 兼容 /v1/audio/speech），支持情感指令与自定义音色，失败自动回退 `say`。GUI「Nico 语音」页：检测 / 下载部署（detached 子进程跑完克隆+venv+权重后自动拉起服务，进度看 `~/.dsh/nico/cosyvoice/deploy.log`，断点可续）/ 停止；GUI 通过轮询服务探针观察就绪，插件运行时零配置回写（configEditor 组合校验是 fatal，不可承载运行时写入）。
 - **右⌘ hotkey**（daemon）：按住录音、松开执行，Nico 风格。优先用原生 CGEventTap 子模块，回退 JXA。需 TCC 输入监控授权。
 - **tier-1 能力**：文件/shell 操作（整理桌面、找文件、转格式）零安装。
 - **人物窗「新会话」按钮**：人物窗右上角常驻原生按钮，点击即丢弃当前固定会话并立即建新会话（气泡确认 + 语音播报），不依赖语音指令——同音字误听时这是可靠入口。overlay 宿主 stdout 现在是事件通道（一行 JSON），插件侧 `bubbleEventHandler` 消费；`rt/bubble` 二进制按源码 mtime 自动重编译。
