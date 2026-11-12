@@ -21,15 +21,15 @@ import signal
 import sys
 import threading
 import time
+from collections import deque
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# nico: Apple GPU 加速（实测 RTF 7.2→2.8）；MPS 不支持的算子回退 CPU。
-# 必须在 import torch 之前设置——torch 2.3 在导入时固化 MPS 回退开关，
-# 放在后面 warmup 直接 NotImplementedError（aten::unfold_backward）。
-# setdefault：外部显式设置（如 NICO_TTS_DEVICE=cpu 排障）时不覆盖。
+# nico: torch 2.3.1 的 MPS 输出实测为全零静音（rms=0.000、谱全平；RTF 2.78
+# 是假象——模型在 MPS 上没算出信号），禁用；未来 torch ≥2.4 可重试：
+# 启动时 NICO_TTS_DEVICE=mps 即走 Apple GPU（PYTORCH_ENABLE_MPS_FALLBACK
+# 必须在 import torch 之前设置——torch 2.3 在导入时固化该开关）。
 os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
-os.environ.setdefault('NICO_TTS_DEVICE', 'mps')
 import numpy as np
 import torch
 
@@ -249,6 +249,113 @@ def synthesize(text: str, instruct: str | None, voice: str | None, speed: float)
     return buf.getvalue()
 
 
+# ── nico 服务端流式播放 ────────────────────────────────────────────
+# 宿主进程里 ffplay 静音且"成功"（根因未明），把播放收进本进程：
+# sounddevice OutputStream（CoreAudio 原生）常驻，合成 chunk 直推缓冲。
+# 打断 = generation 递增 + 清空队列；旧 chunk 丢弃（MPS 推理本身无法强杀，
+# 逻辑中断——旧 generator 返回下一个 chunk 时发现过期即停）。
+try:
+    import sounddevice as _sd
+except Exception:
+    _sd = None
+
+
+class StreamPlayer:
+    """常驻 OutputStream：push() 实时喂数据，clear() 立即静音。"""
+
+    def __init__(self, sample_rate: int):
+        self.lock = threading.Lock()
+        self.queue = deque()
+        self.generation = 0
+        self.stream = _sd.OutputStream(
+            samplerate=sample_rate, channels=1, dtype="float32",
+            blocksize=1024, callback=self._cb) if _sd else None
+        if self.stream:
+            self.stream.start()
+
+    def _cb(self, outdata, frames, time_info, status):
+        got = 0
+        with self.lock:
+            while got < frames and self.queue:
+                chunk = self.queue[0]
+                n = min(frames - got, len(chunk))
+                outdata[got:got + n, 0] = chunk[:n]
+                if n < len(chunk):
+                    self.queue[0] = chunk[n:]
+                else:
+                    self.queue.popleft()
+                got += n
+        if got < frames:
+            outdata[got:, 0] = 0.0
+
+    def push(self, speech) -> None:
+        a = speech.detach().cpu().numpy().reshape(-1).astype(np.float32).clip(-1.0, 1.0)
+        if a.size == 0:
+            return
+        with self.lock:
+            self.queue.append(a)
+
+    def clear(self) -> None:
+        with self.lock:
+            self.queue.clear()
+
+    def busy(self) -> bool:
+        with self.lock:
+            return len(self.queue) > 0
+
+
+PLAYER = None   # lazy StreamPlayer(sample_rate) on first /speak
+
+
+def _split_sentences(text: str, max_chars: int = 45):
+    parts, buf = [], ""
+    for ch in text:
+        buf += ch
+        if ch in "。！？!?；;\n":
+            t = buf.strip()
+            if t:
+                parts.append(t)
+            buf = ""
+        elif len(buf) >= max_chars and ch in "，,、 ":
+            parts.append(buf.strip())
+            buf = ""
+    if buf.strip():
+        parts.append(buf.strip())
+    return parts
+
+
+def _speak_job(text: str, instruct, voice, speed: float, my: int, on_first=None) -> bool:
+    """逐句流式合成并推入播放器。返回 False = 被打断。"""
+    model = STATE["cosyvoice"]
+    pw = _resolve_prompt_wav(voice)
+    first = True
+    for sentence in _split_sentences(text):
+        stream = speed == 1.0
+        if instruct:
+            spk_id = voice if (voice and voice in model.frontend.spk2info) else ""
+            gen = model.inference_instruct2(sentence, instruct, pw, zero_shot_spk_id=spk_id, stream=stream, speed=speed)
+        elif pw:
+            gen = (model.inference_sft(sentence, voice, stream=stream, speed=speed) if voice and voice in model.frontend.spk2info
+                   else model.inference_zero_shot(sentence, "", pw, stream=stream, speed=speed))
+        else:
+            gen = model.inference_sft(sentence, voice or STATE["default_spk"], stream=stream, speed=speed)
+        with STATE["lock"]:
+            for c in gen:
+                if PLAYER.generation != my:
+                    return False
+                PLAYER.push(c["tts_speech"])
+                if first:
+                    first = False
+                    print("speak: first chunk pushed (gen=" + str(my) + ")", flush=True)
+                    if on_first:
+                        on_first()
+        if PLAYER.generation != my:
+            return False
+    while PLAYER.generation == my and PLAYER.busy():
+        time.sleep(0.05)
+    return PLAYER.generation == my
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -277,6 +384,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, json.dumps({"error": "not found"}).encode())
 
     def do_POST(self) -> None:  # noqa: N802
+        if self.path.rstrip().endswith("/audio/interrupt"):
+            if PLAYER:
+                PLAYER.generation += 1
+                PLAYER.clear()
+            self._send(200, json.dumps({"ok": True}).encode())
+            return
+        if self.path.rstrip().endswith("/audio/speak"):
+            self._do_speak()
+            return
         if not self.path.rstrip().endswith("/audio/speech"):
             self._send(404, json.dumps({"error": "not found"}).encode())
             return
@@ -307,6 +423,65 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, json.dumps({"error": str(exc)}).encode())
             return
         self._send(200, wav, "audio/wav")
+
+    def _do_speak(self) -> None:
+        """服务端流式播放：NDJSON 事件 accepted → playing → done{played}。
+
+        打断：任意 /audio/interrupt（或新 /speak）递增 generation 并清空
+        播放队列（立即静音）；本任务在下一次 chunk 边界发现过期即退出。
+        """
+        global PLAYER
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            req = json.loads(self.rfile.read(length) or b"{}")
+        except Exception as exc:
+            self._send(400, json.dumps({"error": "bad json: " + str(exc)}).encode())
+            return
+        raw = str(req.get("input") or "")
+        if not raw:
+            self._send(400, json.dumps({"error": "input is required"}).encode())
+            return
+        if "<|endofprompt|>" in raw:
+            instruct, text = raw.split("<|endofprompt|>", 1)
+            instruct = instruct.strip() or None
+        else:
+            instruct, text = None, raw
+        if not STATE["cosyvoice"]:
+            self._send(503, json.dumps({"error": "model not loaded"}).encode())
+            return
+        if PLAYER is None:
+            try:
+                PLAYER = StreamPlayer(STATE["sample_rate"])
+            except Exception as exc:
+                self._send(503, json.dumps({"error": "sounddevice unavailable: " + str(exc)}).encode())
+                return
+        if PLAYER.stream is None:
+            self._send(503, json.dumps({"error": "sounddevice unavailable"}).encode())
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+
+        def _w(obj):
+            self.wfile.write((json.dumps(obj) + "\n").encode())
+            self.wfile.flush()
+
+        PLAYER.generation += 1
+        my = PLAYER.generation
+        PLAYER.clear()
+        _w({"event": "accepted", "generation": my})
+        played = False
+        try:
+            played = _speak_job(text, instruct, req.get("voice"), float(req.get("speed") or 1.0),
+                                my, on_first=lambda: _w({"event": "playing"}))
+        except Exception as exc:
+            print("speak failed: " + repr(exc), flush=True)
+            _w({"event": "error", "error": str(exc)})
+            return
+        _w({"event": "done", "played": bool(played)})
 
     def _send_pcm_stream(self, text: str, instruct: str | None, voice: str | None, speed: float) -> None:
         """Stream raw s16le mono PCM as the model generates it (close-delimited).
