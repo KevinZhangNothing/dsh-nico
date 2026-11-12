@@ -21,6 +21,15 @@ const BUNDLED_VOICES = join(SCRIPT_DIR, '..', 'assets', 'voices')
 const COSY_DIR = process.env.COSY_DIR || join(homedir(), '.dsh', 'nico', 'cosyvoice')
 const SRC = join(COSY_DIR, 'src')
 const VENV = join(COSY_DIR, 'venv')
+// MPS 部署（ZoneTwelve/CosyVoice-MPS fork + torch 2.15，RTF 7.2→1.6，输出
+// 音质已过频谱 QA）：存在即优先——官方 src/venv（CPU）保留作回退。
+// fork 的 requirements 不能重装（会降级 torch 2.15→2.3.1，MPS 又坏了），
+// 所以 MPS 模式跳过 venv/依赖步骤，只做服务启动。
+const MPS_SRC = join(COSY_DIR, 'mps-src')
+const MPS_VENV = join(COSY_DIR, 'mps-venv')
+const useMps = existsSync(MPS_SRC) && existsSync(MPS_VENV)
+const ASRC = useMps ? MPS_SRC : SRC
+const AVENV = useMps ? MPS_VENV : VENV
 const MODEL = join(COSY_DIR, 'models', 'CosyVoice2-0.5B')
 const REPO = 'https://github.com/FunAudioLLM/CosyVoice.git'
 const STATUS_FILE = process.env.COSY_STATUS || join(COSY_DIR, 'deploy-status.json')
@@ -80,6 +89,9 @@ function main() {
     log('[deploy] 参考音色：' + (copied > 0 ? '新增 ' + copied + ' 个 → ' + VOICES_DIR : '已存在，跳过'))
   }
 
+  // 1-4. CPU 栈（源码/venv/依赖/权重）——MPS 模式整体跳过（fork venv 已自足，
+  // 重装依赖会把 torch 2.15 降回 2.3.1，MPS 又坏）。
+  if (!useMps) {
   // 1. repo checkout (shallow)
   if (!existsSync(join(SRC, 'cosyvoice'))) {
     step('1/5', '克隆 CosyVoice 源码（shallow）')
@@ -142,11 +154,12 @@ function main() {
       'from modelscope import snapshot_download; snapshot_download("iic/CosyVoice2-0.5B", local_dir="' + MODEL + '")',
     ], 'model download')
   }
+  } // !useMps
 
   // 5. marker + summary
   step('5/5', '写入部署清单')
-  writeFileSync(join(COSY_DIR, 'deploy.json'), JSON.stringify({ src: SRC, venv: VENV, model: MODEL, deployedAt: new Date().toISOString() }, null, 2) + '\n')
-  log('[deploy] 部署完成：' + COSY_DIR)
+  writeFileSync(join(COSY_DIR, 'deploy.json'), JSON.stringify({ src: ASRC, venv: AVENV, model: MODEL, mps: useMps, deployedAt: new Date().toISOString() }, null, 2) + '\n')
+  log('[deploy] 部署完成：' + COSY_DIR + (useMps ? '（MPS: ' + ASRC + '）' : ''))
 
   // 6. chain the server launch (detached, outlives this script)
   const SERVER_PY = process.env.NICO_SERVER_PY
@@ -156,7 +169,7 @@ function main() {
     // 服务端 stdout/stderr 落盘 server.log：合成 INFO（rtf）与 traceback 是
     // 排障的唯一来源，'ignore' 会把它们全丢掉（MPS instruct2 报错曾无迹可寻）。
     const serverLog = openSync(join(COSY_DIR, 'server.log'), 'a')
-    const child = spawn(join(VENV, 'bin', 'python'), [SERVER_PY, '--src', SRC, '--model-dir', MODEL, '--port', SERVE_PORT], {
+    const child = spawn(join(AVENV, 'bin', 'python'), [SERVER_PY, '--src', ASRC, '--model-dir', MODEL, '--port', SERVE_PORT], {
       detached: true, stdio: ['ignore', serverLog, serverLog],
       env: { ...process.env },
     })
