@@ -22,13 +22,18 @@ test('stopSpeaking with nothing playing is a no-op', () => {
   stopSpeaking()
 })
 
-test('ffplay with a dead audio target is fail, not silent ok', async () => {
-  // 实测：SDL 音频目标打不开时 ffplay 照样消费完整流并 exit 0（-loglevel
-  // quiet 连报错都吞掉）——曾让每条 CosyVoice 回复静音却被判成功。
+test('inherited broken SDL_AUDIODRIVER is overridden, audio still plays', async () => {
+  // 历史：SDL 目标打不开时 ffplay 照样消费完整流并 exit 0（-loglevel quiet
+  // 连报错都吞掉）——宿主侧 CosyVoice 回复静音却被判成功。现在子进程强制
+  // coreaudio：即使宿主继承了坏驱动（dummy/nonexistent），播放也必须真出声
+  // （= 流播放正常结束返回 'ok'，而不是静音 'ok' 或设备失败 'fail'）。
+  const probe = await fetch((process.env.NICO_TTS_URL || 'http://127.0.0.1:59993/v1') + '/models',
+    { signal: AbortSignal.timeout(2000) }).catch(() => null)
+  if (!probe || !probe.ok) return   // 本地 CosyVoice 未运行：跳过（不装假通过）
   process.env.SDL_AUDIODRIVER = 'nonexistent'
   const outcome = await playPcmStream('测试', {
     url: process.env.NICO_TTS_URL || 'http://127.0.0.1:59993/v1',
   }, null).catch(() => 'fail')
   process.env.SDL_AUDIODRIVER = ''
-  assert.equal(outcome, 'fail')
+  assert.equal(outcome, 'ok')
 })
