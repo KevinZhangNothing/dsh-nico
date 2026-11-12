@@ -5,6 +5,11 @@
 // 各自独立，不引入共享模块加载复杂度。
 // 诊断：每个关键步骤经 nicoLog 回传宿主 stderr（init 各步、失败原因、模型尺寸）。
 const MODEL_URL = '../live2d/model3.json'
+// 身体跟随头部的跟随系数：素材构建器把头/身网格在 y≈-0.5 处做成平齐拼接（搭接仅
+// ~0.002），头部 Angle 满档摆动时脖子接缝会裂开露背景。让 BodyAngle 按
+// BODY_FOLLOW_K 跟随 Angle 可把接缝错位压回搭接量以内。AngleX ±30 时叠加量为
+// ±24，仍在 BodyAngleX 的 -30~30 值域内。
+const BODY_FOLLOW_K = 0.8
 const log = (m) => { try { window.webkit?.messageHandlers?.nicoLog?.postMessage(m) } catch {} ; console.log(m) }
 log('core=' + (typeof Live2DCubismCore))
 // 诊断补丁：XHR 失败/非 200、未处理 rejection、全局错误都上报。
@@ -40,8 +45,18 @@ let naturalH = 0   // 缩放前的自然高度：fit 幂等依据（model.height
 // 否则微笑/困倦/惊讶的嘴会被「闭嘴」钩子抹掉。
 function hookMouth() {
   model.internalModel.on('beforeModelUpdate', () => {
+    const cm = model.internalModel.coreModel
+    // 身体跟随头部：素材头/身网格在 y≈-0.5 平齐零搭接，头部摆动会拉开脖缝。
+    // 让 BodyAngle 跟随 Angle（motion 自带的 BodyAngle 摆动值保留，叠加跟随量）。
+    // 必须无条件执行：idle 待机时接缝同样会裂。Z 不叠加 motion 的 BodyAngleZ，
+    // 避免与跟随量同向翻倍。
+    try {
+      cm.setParameterValueById('ParamBodyAngleX', cm.getParameterValueById('ParamBodyAngleX') + cm.getParameterValueById('ParamAngleX') * BODY_FOLLOW_K)
+      cm.setParameterValueById('ParamBodyAngleY', cm.getParameterValueById('ParamBodyAngleY') + cm.getParameterValueById('ParamAngleY') * BODY_FOLLOW_K)
+      cm.setParameterValueById('ParamBodyAngleZ', cm.getParameterValueById('ParamAngleZ') * BODY_FOLLOW_K)
+    } catch {}
     if (!wasSpeaking) return
-    try { model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen) } catch {}
+    try { cm.setParameterValueById('ParamMouthOpenY', mouthOpen) } catch {}
   })
 }
 
