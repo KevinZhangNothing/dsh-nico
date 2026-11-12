@@ -132,6 +132,13 @@ def load_model(src: str, model_dir: str) -> None:
             VOICE_EXTRA[vid] = p
             try:
                 model.add_zero_shot_spk("", p, vid)
+                # add_zero_shot_spk stores only the zero-shot keys (llm_embedding
+                # etc.); the no-instruct SFT decode path reads 'embedding' via
+                # frontend_sft and raises KeyError otherwise — the request then
+                # 500s and the plugin silently falls back to `say` (observed:
+                # every AISHELL-3 voice sounded identical). Mirror register_voice.
+                mi = model.frontend.spk2info[vid]
+                mi["embedding"] = mi["llm_embedding"]
                 print("extra voice registered: " + vid, flush=True)
             except Exception as exc:  # noqa: BLE001
                 print("extra voice register failed " + vid + ": " + repr(exc), flush=True)
