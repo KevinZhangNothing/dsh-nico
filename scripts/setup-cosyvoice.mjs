@@ -7,7 +7,7 @@
 //
 // Optional env: COSY_DIR (default ~/.dsh/nico/cosyvoice), PIP_INDEX_URL.
 import { spawnSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync, appendFileSync, cpSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync, appendFileSync, cpSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -100,8 +100,21 @@ function main() {
   // 3. python deps (torch 2.3.1 arm64 wheel + onnxruntime darwin；linux 专属依赖被 requirements 条件排除)
   const pip = join(VENV, 'bin', 'pip')
   step('3/5', '安装 Python 依赖（torch 等，约 2GB，最慢一步）')
+  // Sanitize upstream requirements first: matcha-tts pins gradio==3.43.2,
+  // conflicting with the gradio==5.4.0 CosyVoice pins (ResolutionImpossible),
+  // and matcha is NOT needed — the plugin vendors pure-Python matcha files
+  // into site-packages. Comment it out so fresh clones deploy cleanly.
+  const reqPath = join(SRC, 'requirements.txt')
+  const reqSrc = readFileSync(reqPath, 'utf8')
+  const reqFixed = reqSrc.split('\n')
+    .map((l) => l.trimStart().startsWith('matcha-tts') ? '# ' + l : l)
+    .join('\n')
+  if (reqFixed !== reqSrc) {
+    writeFileSync(reqPath, reqFixed)
+    log('[deploy] 已剔除 matcha-tts 依赖（与 gradio==5.4.0 冲突，插件使用 vendored 纯 Python matcha）')
+  }
   run(pip, ['install', '--upgrade', 'pip'], 'pip upgrade')
-  run(pip, ['install', '-r', join(SRC, 'requirements.txt')], 'pip requirements')
+  run(pip, ['install', '-r', reqPath], 'pip requirements')
 
   // 4. weights via ModelScope (~2.5GB)
   if (existsSync(join(MODEL, 'cosyvoice2.yaml'))) {
