@@ -309,6 +309,7 @@ PLAYER = None   # lazy StreamPlayer(sample_rate) on first /speak
 
 def _split_sentences(text: str, max_chars: int = 45):
     parts, buf = [], ""
+    first_comma_done = False
     for ch in text:
         buf += ch
         if ch in "。！？!?；;\n":
@@ -317,6 +318,11 @@ def _split_sentences(text: str, max_chars: int = 45):
                 parts.append(t)
             buf = ""
         elif len(buf) >= max_chars and ch in "，,、 ":
+            parts.append(buf.strip())
+            buf = ""
+        elif ch in "，," and len(buf) >= 6 and not first_comma_done:
+            # 首句在第一个逗号处提前提交：TTFA 再降 1-2s（后续句照常粒度）。
+            first_comma_done = True
             parts.append(buf.strip())
             buf = ""
     if buf.strip():
