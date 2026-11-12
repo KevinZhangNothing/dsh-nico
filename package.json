@@ -27,7 +27,8 @@
     "native/overlay",
     "NicoDaemon.app",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "README.en.md"
   ],
   "engines": {
     "node": ">=22.19.0"
