@@ -16,7 +16,7 @@
 // 人物常驻：end/fail 只淡出收起 bubblePanel，charPanel 不淡出；state=="idle" 时
 // bubblePanel 整窗不上屏（在屏则淡出 orderOut），人物在屏待机。close 仍整体退出。
 //
-// 几何：charPanel 宽 680、高 min(vf.height*0.40,430)，贴底居中；bubblePanel
+// 几何：charPanel 宽 680×CHAR_SCALE、高 min(vf.height*0.40,430)×CHAR_SCALE，贴底居中；bubblePanel
 // 水平中心 = charPanel 中心 + 4% 屏宽、底边 = charPanel 顶边 - 12（还原样图
 // 构图），宽高由 bubble.js 按文字内容量出后经 script message 回传自适应
 // （BUBBLE_MIN_W/BUBBLE_MIN_H 兜底短文案）。两窗按此关系跟随：拖动任意一窗，
@@ -35,8 +35,16 @@ import Cocoa
 import WebKit
 import QuartzCore
 
-let CHAR_W: CGFloat = 680
-let CHAR_H_MAX: CGFloat = 430
+// 人物尺寸等比缩放系数（1 = 原尺寸）。人物在屏上占位偏大时调小它：
+// 面板宽、面板高上限、以及「屏高 40%」的相对高度项统一乘这个系数，
+// Live2D 画布按窗高 95% 铺满（见 overlay/model.js fit()），所以人物整体等比缩小。
+// 运行时可用环境变量 NICO_CHAR_SCALE 覆盖（无需重新编译）。
+let CHAR_SCALE: CGFloat = {
+    if let s = ProcessInfo.processInfo.environment["NICO_CHAR_SCALE"], let v = Double(s) { return CGFloat(v) }
+    return 0.45
+}()
+let CHAR_W: CGFloat = 680 * CHAR_SCALE
+let CHAR_H_MAX: CGFloat = 430 * CHAR_SCALE
 // 气泡尺寸：内容自适应（上限在 bubble.js 侧限制），这里只兜底防 0×0——
 // 实际尺寸以 bubble.js 上报为准，极短文案就贴内容自然大小。
 let BUBBLE_MIN_W: CGFloat = 40
@@ -296,7 +304,8 @@ final class RtSchemeHandler: NSObject, WKURLSchemeHandler {
         return screen?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     }
-    private func charH(_ vf: NSRect) -> CGFloat { min(vf.height * 0.40, CHAR_H_MAX) }
+    // 人物窗高：屏高 40% 与上限取小，再乘 CHAR_SCALE（整体等比缩放）。
+    private func charH(_ vf: NSRect) -> CGFloat { min(vf.height * 0.40 * CHAR_SCALE, CHAR_H_MAX) }
 
     // bubblePos = f(charPos)：底边 = 人物顶边 - gap，中心 = 人物中心 + 4% 屏宽。
     private func bubbleFrame(for charOrigin: NSPoint, vf: NSRect) -> NSRect {
@@ -329,7 +338,7 @@ final class RtSchemeHandler: NSObject, WKURLSchemeHandler {
     private func clampToScreen(_ p: NSPoint) -> NSPoint? {
         for s in NSScreen.screens {
             let vf = s.visibleFrame
-            let ch = min(vf.height * 0.40, CHAR_H_MAX)
+            let ch = min(vf.height * 0.40 * CHAR_SCALE, CHAR_H_MAX)
             let charF = NSRect(x: p.x, y: p.y, width: CHAR_W, height: ch)
             let cx = p.x + CHAR_W / 2 + vf.width * BUBBLE_DX
             let bubF = NSRect(x: cx - BUBBLE_MIN_W / 2, y: p.y + ch - bubbleGap,
