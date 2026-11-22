@@ -131,6 +131,7 @@ nico setup                    # 抽取 sherpa-onnx 运行时
 | `NICO_SPRITE_DIR` | rt/sprite | 鲸鱼娘表情立绘 |
 | `NICO_LIVE2D_SRC` | 插件同级 live2d 仓库 | overlay 部署素材源 |
 | `NICO_VAD_THRESHOLD` | `0.012` | 静音判定 RMS 阈值（20ms 帧），麦克风增益异常时可调 |
+| `NICO_AUDIO_DEVICE` | 自动 | avfoundation 输入设备，如 `:1`；默认从设备列表优先选内建麦克风，避免虚拟输入占住 `:0` 录到静音 |
 | `NICO_HANDS_FREE` | 关 | `1` 开启免提模式（CLI 守护场景；GUI 走设置开关） |
 | `NICO_TAP_DEBUG` | 关 | `1` 记录热键原始事件 |
 

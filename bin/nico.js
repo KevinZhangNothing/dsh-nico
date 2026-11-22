@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Nico CLI — 按住右⌘说一句 → 本地 AI 替我操作电脑
 // Usage:
-//   nico record <out.wav> [max-sec]   录麦（ffmpeg avfoundation :0）
+//   nico record <out.wav> [max-sec]   录麦（ffmpeg avfoundation，自动选内置麦克风）
 //   nico say <wav>                    STT → DSH → say 朗读
 //   nico chat <text...>               文本直发（调试）
 //   nico daemon                       常驻：右⌘ hold 录音 → say（需 TCC 授权）
