@@ -30,11 +30,11 @@ test('reply ok → start(Nod+surprised)；fail → Shake+angry', () => {
 
 test('progress → working 带任务原文与步骤', () => {
   const steps = [{ label: '读取文件 · a.mjs', status: 'running' }]
-  const s = decorate(eventToState('progress', { text: '整理桌面', plan: true, steps, hint: '第 1 步 / 共 3 步' }))
+  const s = decorate(eventToState('progress', { text: '整理桌面', plan: true, steps, hint: '正在做：读取文件 · a.mjs' }))
   assert.equal(s.state, 'working')
   assert.equal(s.text, '整理桌面')
   assert.equal(s.plan, true)
-  assert.equal(s.hint, '第 1 步 / 共 3 步')
+  assert.equal(s.hint, '正在做：读取文件 · a.mjs')
   assert.deepEqual(s.steps, steps)
   assert.equal(s.motion, 'Idle')
   assert.equal(s.exp, 'f08_sleepy')

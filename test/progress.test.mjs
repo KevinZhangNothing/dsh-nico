@@ -38,12 +38,12 @@ test('todo_write replaces the tool roll-up with the checklist', () => {
   const v = progressView(s, '帮我修个 bug')
   assert.equal(v.state, 'working')
   assert.equal(v.text, '帮我修个 bug')
-  assert.equal(v.plan, true, 'todo list is a numbered plan')
+  assert.equal(v.plan, true, 'todo list is the action checklist')
   assert.deepEqual(v.steps.map((x) => x.status), ['completed', 'in_progress', 'pending'])
-  assert.equal(v.hint, '第 2 步 / 共 3 步', 'names the current step, not a ratio')
+  assert.equal(v.hint, '正在做：修改实现', 'names the action, not an ordinal')
 })
 
-test('plan hint falls back to the first open step, then the last step', () => {
+test('plan hint falls back to the next action, then done', () => {
   let s = applyProgress(createProgress(), tool('c', 'todo_write', {
     todos: [
       { content: 'a', status: 'completed' },
@@ -51,7 +51,7 @@ test('plan hint falls back to the first open step, then the last step', () => {
       { content: 'c', status: 'pending' },
     ],
   }))
-  assert.equal(progressView(s, '').hint, '第 2 步 / 共 3 步')
+  assert.equal(progressView(s, '').hint, '下一步：b')
   s = applyProgress(s, tool('d', 'todo_write', {
     todos: [
       { content: 'a', status: 'completed' },
@@ -59,7 +59,7 @@ test('plan hint falls back to the first open step, then the last step', () => {
       { content: 'c', status: 'completed' },
     ],
   }))
-  assert.equal(progressView(s, '').hint, '第 3 步 / 共 3 步')
+  assert.equal(progressView(s, '').hint, '已完成')
 })
 
 test('todo rows are capped and unknown statuses become pending', () => {
@@ -88,14 +88,14 @@ test('tool rows keep only the most recent five', () => {
   assert.equal(s.steps[4].callId, 'c7')
 })
 
-test('empty progress view uses the current step number as its hint', () => {
+test('empty progress view stays neutral; step counters do not surface', () => {
   const v = progressView(createProgress(), '')
   assert.equal(v.state, 'working')
   assert.equal(v.plan, false)
   assert.deepEqual(v.steps, [])
   assert.equal(v.hint, '执行中…')
   const stepped = applyProgress(createProgress(), { kind: 'step', step: 2 })
-  assert.equal(progressView(stepped, 'x').hint, '第 2 步')
+  assert.equal(progressView(stepped, 'x').hint, '执行中…', 'no "step N" hint')
 })
 
 test('normalizeProgress maps only drawable run events', () => {

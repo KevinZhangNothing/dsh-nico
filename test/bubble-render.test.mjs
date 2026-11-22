@@ -46,7 +46,7 @@ test('working state renders the step rows and measures once', () => {
     state: 'working',
     text: '整理桌面',
     plan: true,
-    hint: '第 2 步 / 共 3 步',
+    hint: '正在做：运行命令 · ls',
     steps: [
       { label: '读取文件 · a.mjs', status: 'completed' },
       { label: '运行命令 · ls', status: 'running' },
@@ -58,14 +58,13 @@ test('working state renders the step rows and measures once', () => {
   assert.equal(nodes.text.textContent, '整理桌面')
   assert.equal(nodes.steps.style.display, 'block')
   assert.equal(nodes.steps.children.length, 3)
-  // Plan rows are numbered: 1. ✓ label / 2. ● label / 3. ○ label.
-  assert.equal(nodes.steps.children[0].children[0].textContent, '1.')
-  assert.equal(nodes.steps.children[0].children[1].textContent, '✓')
-  assert.equal(nodes.steps.children[1].children[0].textContent, '2.')
-  assert.equal(nodes.steps.children[1].children[1].textContent, '●')
-  assert.equal(nodes.steps.children[2].children[0].textContent, '3.')
-  assert.equal(nodes.steps.children[2].children[1].textContent, '○')
-  assert.equal(nodes.steps.children[1].children[2].textContent, '运行命令 · ls')
+  // Rows are the actions themselves, with only a status icon.
+  assert.equal(nodes.steps.children[0].children[0].textContent, '✓')
+  assert.equal(nodes.steps.children[0].children[1].textContent, '读取文件 · a.mjs')
+  assert.equal(nodes.steps.children[1].children[0].textContent, '●')
+  assert.equal(nodes.steps.children[1].children[1].textContent, '运行命令 · ls')
+  assert.equal(nodes.steps.children[2].children[0].textContent, '○')
+  assert.equal(nodes.steps.children[2].children[1].textContent, '跑测试')
   assert.equal(sizes.length, 1)
   // Same payload again (step_start/step_end churn) must not re-measure.
   api.setState(state)

@@ -20,23 +20,18 @@ const $ = (id) => document.getElementById(id)
 let lastSig = null
 
 // 步骤列表：最多 MAX_STEPS 行，超出只留最近几行（reducer 已裁剪工具调用）。
-// plan=true 时是会话给出的任务计划（第一步/第二步…），带序号；否则是工具
-// 调用流水，只做当前动作提示。全部 textContent，任务内容/路径不拼 HTML。
-function renderSteps(steps, plan = false) {
+// 每行是一条实际动作（读取 voice.mjs / 改流式解析 / 跑测试），用图标表示
+// 完成、进行中、未开始；不显示序号，序号不携带信息。
+// 全部 textContent，任务内容/路径不拼 HTML。
+function renderSteps(steps) {
   const box = $('steps')
   const list = Array.isArray(steps) ? steps.slice(0, MAX_STEPS) : []
   box.textContent = ''
   box.style.display = list.length ? 'block' : 'none'
-  list.forEach((s, i) => {
+  for (const s of list) {
     const status = s && s.status ? String(s.status) : 'pending'
     const row = document.createElement('div')
     row.className = 'step ' + status
-    if (plan) {
-      const idx = document.createElement('span')
-      idx.className = 'idx'
-      idx.textContent = (i + 1) + '.'
-      row.append(idx)
-    }
     const ico = document.createElement('span')
     ico.className = 'ico'
     ico.textContent = ICON[status] ?? '○'
@@ -45,7 +40,7 @@ function renderSteps(steps, plan = false) {
     label.textContent = String(s?.label ?? '')
     row.append(ico, label)
     box.append(row)
-  })
+  }
 }
 
 // 先 max-content 量自然宽，夹到 ≤MAX_W 定宽，再量换行后的高（#text 已被
@@ -70,16 +65,15 @@ window.__nico = {
       return
     }
     const steps = Array.isArray(s.steps) ? s.steps : []
-    const plan = s.plan === true
     // 同一状态高频重绘（step_start / step_end 等）不重复量尺寸、不抖窗口。
-    const sig = JSON.stringify([s.state, s.text ?? '', s.hint ?? '', plan, steps])
+    const sig = JSON.stringify([s.state, s.text ?? '', s.hint ?? '', steps])
     if (sig === lastSig) return
     lastSig = sig
     const [ico, label] = HEAD[s.state] ?? HEAD.listening
     $('bubble').style.opacity = 1
     $('hico').textContent = ico; $('hlabel').textContent = label
     $('text').textContent = s.text ?? ''; $('hint').textContent = s.hint ?? ''
-    renderSteps(steps, plan)
+    renderSteps(steps)
     fitSize()
   },
 }
