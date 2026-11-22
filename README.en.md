@@ -34,7 +34,11 @@ Two host modes share one voice loop (`lib/voice.mjs`):
 - **Session greeting**: the voice-output contract sent when the session is first created (≤2 spoken sentences, never read back task output), extensible from the GUI; changes rebuild the session automatically.
 - **Neural TTS**: resident CosyVoice2-0.5B service (model loaded once), **server-side streaming playback** — sentence-buffered synthesis, chunks pushed straight into a persistent `sounddevice.OutputStream` (CoreAudio); first audio in ~3-5s; graceful fallback chain (whole-wav + afplay → macOS `say`). A new task immediately interrupts in-flight playback (generation bump + queue clear = instant silence).
 - **Emotion voices**: AISHELL-3 reference voices + CosyVoice2 instruct2 emotion directives (e.g. "say it happily"), picked in the GUI.
-- **Live2D overlay**: dual NSPanels (character + frosted bubble) driven through six states (listening/thinking/start/speaking/end/fail); persistent draggable character with position memory; the native "New Session" button pins next to the head.
+- **Live2D overlay**: dual NSPanels (character + frosted bubble) driven through seven states (listening/thinking/working/start/speaking/end/fail); persistent draggable character with position memory; the native "New Session" button pins next to the head.
+- **Step-by-step progress**: the bubble's working state shows a numbered plan — step 1 does X, step 2 does Y (✓/●/○) — with a "step X of N" hint: not a progress bar, but where the task actually is. The plan comes from the session's `todo_write`; without one it falls back to the latest tool calls (run command / read file / edit file…). Events come from the headless `--json` stream; they are never spoken and never interrupt playback, and collapse when the task ends.
+- **Screen awareness ("say this")**: when a command refers to what is on screen ("what is this error", "look at my screen", "close this window for me"), releasing the key captures one screenshot; the session reads it with `read_image` before answering — no describing which window you are in. The capture goes to a per-use temp dir and is deleted when the turn ends; it is never kept or uploaded. Without the host's Screen Recording permission it degrades to a text-only command.
+- **Spoken cancellation**: a whole-utterance "算了 / 取消 / never mind" never reaches the session — she just answers "好的" (okay), so the fixed context stays clean.
+- **Long-term memory**: the session contract requires reading `~/.dsh/nico/memory.md` before answering; say "记住…" (remember...) or mention plans, deadlines, preferences, or what to call you, and the session appends a dated one-line record. Expired memories get pruned. It is a plain local file — open it, change it, delete it. Say "清空记忆 / 忘掉之前的话" to wipe it; "清空会话" still rotates the session — the two never interfere.
 - **Tier-1 skills**: file/shell tasks (organize desktop, find files, convert formats) with zero setup.
 
 ## Install
@@ -133,14 +137,15 @@ nico setup                    # extract the sherpa-onnx runtime
 ## Tests
 
 ```sh
-node --test        # 44 tests: protocol / media / client registration / session rotation / TTS interrupt / wiring smoke
+node --test        # 88 tests: protocol / step progress / media / client registration / session rotation / TTS interrupt / wiring smoke
 ```
 
 Host behaviors (overlay geometry, single-instance lock, real-key hold-to-talk) need manual verification (driver scripts `test/post-*.swift`).
 
 ## Known limitations
 
-- The voice flow defaults to `--approval-policy never`: approval-gated operations execute or deny immediately, never suspend.
+- The voice flow defaults to `--approval-policy never`: approval-gated operations execute or deny immediately, never suspend. Measured: headless `--approval-policy ask` cannot back a voice-confirmation loop either — approval requests fail closed (`SANDBOX_ESCALATION_UNAVAILABLE`; headless has no approval answerer channel). Interactive confirmation needs DSH core support and is out of the plugin's reach.
+- Screen awareness needs the host's Screen Recording permission (DSH desktop app / NicoDaemon.app); without it the capture fails and the command runs text-only.
 - The hotkey tap only sees standard HID events; vendor-proprietary headset buttons need `hidutil monitor`.
 - Mouth movement is rhythm-faked; RMS-driven lip sync is future work.
 - Overlay CDN downloads have no resume (the deploy is atomic — safe to interrupt and rerun).

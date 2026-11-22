@@ -28,6 +28,21 @@ test('reply ok → start(Nod+surprised)；fail → Shake+angry', () => {
   assert.equal(f.exp, 'f03_angry')
 })
 
+test('progress → working 带任务原文与步骤', () => {
+  const steps = [{ label: '读取文件 · a.mjs', status: 'running' }]
+  const s = decorate(eventToState('progress', { text: '整理桌面', plan: true, steps, hint: '第 1 步 / 共 3 步' }))
+  assert.equal(s.state, 'working')
+  assert.equal(s.text, '整理桌面')
+  assert.equal(s.plan, true)
+  assert.equal(s.hint, '第 1 步 / 共 3 步')
+  assert.deepEqual(s.steps, steps)
+  assert.equal(s.motion, 'Idle')
+  assert.equal(s.exp, 'f08_sleepy')
+  // 空 steps 也照发：气泡据此清掉上一条任务的步骤。
+  assert.deepEqual(eventToState('progress', { text: 'x' }).steps, [])
+  assert.equal(eventToState('progress', { text: 'x' }).plan, false)
+})
+
 test('speak → speaking(f02_smile, 无 motion)；tts-done → end(Bow)', () => {
   const sp = decorate(eventToState('speak', { reply: 'x' }))
   assert.equal(sp.state, 'speaking'); assert.equal(sp.exp, 'f02_smile')

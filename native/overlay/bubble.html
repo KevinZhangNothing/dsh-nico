@@ -4,6 +4,7 @@
      （.hudWindow 材质）提供，容器保持透明无背景；内层 padding 让文字离圆角
      边有安全距离。文字统一亮白，不用状态主题色（用户决策）。
      #text 用 -webkit-line-clamp 截到 4 行，超出末尾省略号，不做静默裁切。
+     #steps 是任务分步进度（working 态），行数由 bubble.js 限制。
      #bubble 宽高由 bubble.js 按内容量出，经 nicoSize message 回传给原生层
      缩放窗口。 -->
 <style>
@@ -21,10 +22,22 @@
           /* 超过 4 行末尾省略号（标准写法：-webkit-box + line-clamp） */
           display: -webkit-box; -webkit-box-orient: vertical;
           -webkit-line-clamp: 4; overflow: hidden; text-overflow: ellipsis }
+  #steps { display: none; margin-top: 7px; max-height: 132px; overflow: hidden }
+  .step { display: flex; gap: 6px; align-items: baseline; font-size: 12px;
+          line-height: 1.5; color: rgba(255,255,255,.84) }
+  .step .idx { flex: none; min-width: 12px; color: rgba(255,255,255,.38);
+               font-variant-numeric: tabular-nums }
+  .step .ico { flex: none; width: 12px; font-size: 10px; color: rgba(255,255,255,.45) }
+  .step .label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis }
+  .step.running .ico, .step.in_progress .ico { color: #8ab4ff }
+  .step.running .label, .step.in_progress .label { color: #fff; font-weight: 600 }
+  .step.completed .ico { color: #7ee0a3 }
+  .step.error .ico, .step.error .label { color: #ff9a9a }
+  .step.pending { color: rgba(255,255,255,.55) }
   #hint { margin-top: 4px; font-size: 11px; color: rgba(255,255,255,.6) }
 </style>
 <div id="bubble" style="opacity:0">
   <div id="head"><span id="hico"></span><span id="hlabel"></span></div>
-  <div id="text"></div><div id="hint"></div>
+  <div id="text"></div><div id="steps"></div><div id="hint"></div>
 </div>
 <script src="bubble.js"></script>

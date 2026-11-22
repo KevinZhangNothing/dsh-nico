@@ -12,6 +12,8 @@ test('default greeting carries the voice-output contract', () => {
   // whole task results through TTS.
   assert.match(g, /语音朗读/)
   assert.match(g, /不超过两句话/)
+  // Bubble step progress depends on the session maintaining a todo checklist.
+  assert.match(g, /todo_write/)
   assert.match(g, /收到$/)
 })
 

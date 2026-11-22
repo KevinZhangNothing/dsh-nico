@@ -7,6 +7,7 @@
 //   nico daemon                       常驻：右⌘ hold 录音 → say（需 TCC 授权）
 //   nico sid                          显示/创建固定会话 id
 //   nico new                          丢弃固定会话（下一条指令开新会话）
+//   nico words                        查看热词修正表（路径 + 当前内容）
 //   nico setup                        把 sherpa-onnx 运行时从 app.asar 抽取到 ~/.dsh/nico/rt
 import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
@@ -52,6 +53,7 @@ function doDaemon() {
     const voice = new NicoVoice({ maxSec: 30, say })
     voice.on('ready', () => console.error('nico: 热键就绪，按住右⌘说话'))
     voice.on('rec-start', () => console.error('nico: 录音…'))
+    voice.on('rec-capped', () => { console.error('nico: 录音达上限，已自动停止'); say('录音时间到') })
     voice.on('transcript', (t) => console.error('nico: ' + (t || '（静默）')))
     voice.on('reply', ({ ok, reply, reason }) => {
       console.error('nico: 执行' + (ok ? '' : '失败') + (reason ? ' ' + JSON.stringify(reason) : ''))
@@ -90,6 +92,14 @@ switch (cmd) {
   case 'chat': runCommandAndSpeak(rest.join(' ')); break
   case 'sid': console.log(getSid()); break
   case 'new': resetSession(); console.log('nico: 已丢弃固定会话，下一条指令开新会话'); break
+  case 'words': {
+    const { correctionsFile, loadCorrections } = await import('../lib/hotwords.mjs')
+    const map = loadCorrections()
+    console.error('nico: 修正表 ' + correctionsFile() + '（GUI「Nico 语音」页亦可编辑，保存即镜像到此文件）')
+    const entries = Object.entries(map)
+    console.log(entries.length ? entries.map(([k, v]) => k + ' → ' + v).join('\n') : '（空）编辑说明见 README「热词修正表」')
+    break
+  }
   case 'daemon': doDaemon(); break
   case 'setup': doSetup(); break
   default:

@@ -29,12 +29,19 @@
 
 ## 功能
 
-- **本地语音识别**：SenseVoice（ONNX int8，sherpa-onnx），16k mono，完全离线；可选云端 ASR（端点/密钥自动从宿主 DSH 模型配置读取）。
+- **本地语音识别**：SenseVoice（ONNX int8，sherpa-onnx），16k mono，完全离线；可选云端 ASR（端点/密钥自动从宿主 DSH 模型配置读取）。送识别前裁掉首尾静音（能量门控）：误触按键不触发识别与会话，尾静音不再诱发 SenseVoice 幻觉字符。
 - **固定会话 + 主动轮换**：语音指令落在固定 headless 会话（多轮上下文，`--approval-policy never`）。说「新会话 / 新开一个对话 / 清空会话」即轮换；人物窗右上角**「新会话」按钮**点击等效（语音同音字误听时的可靠入口）。旧会话保留在 DSH 会话列表。
 - **会话引导语**：首次建会话时发送的语音输出契约（回复不超过两句话、禁止复述任务输出等），GUI「Nico 语音」页可自定义追加内容，改后自动重建会话。
 - **神经语音播报**：CosyVoice2-0.5B 常驻服务（模型只加载一次），**服务端流式播放**——按句合成、chunk 直推 `sounddevice.OutputStream`（CoreAudio），首声 ~3-5s；失败逐级回退（整段 wav + afplay → macOS `say`）。新任务进入即打断在途播报（generation 递增 + 清空队列，立即静音）。
 - **情感音色**：AISHELL-3 参考音色 + CosyVoice2 instruct2 情感指令（如「用开心的语气说」），GUI 下拉选择。
-- **Live2D 悬浮窗**：双 NSPanel（人物窗 + 毛玻璃气泡窗）驱动六态（listening/thinking/start/speaking/end/fail），人物常驻可拖动、位置记忆；「新会话」原生按钮钉在人物头部旁。
+- **热词修正表**：`~/.dsh/nico/corrections.json` 写 `{"误听词": "正确词"}`，STT 结果在进入会话前替换（长词优先），专有名词与同音字误听不再需要重说。
+- **Live2D 悬浮窗**：双 NSPanel（人物窗 + 毛玻璃气泡窗）驱动七态（listening/thinking/working/start/speaking/end/fail），人物常驻可拖动、位置记忆；「新会话」原生按钮钉在人物头部旁。
+- **任务分步进度**：气泡的 working 态显示编号任务清单（第一步做什么、第二步做什么，✓/●/○），提示行写明「第 X 步 / 共 N 步」——不是进度条，而是当前做到哪一步。清单由会话用 `todo_write` 维护；未用清单时回退为最近几步工具调用（运行命令/读取文件/编辑文件…）。事件来自 headless `--json` 流，不朗读、不打断播报，任务结束随即收起。
+- **录音上限提示**：录音达到上限（默认 30s）自动停止并语音/气泡提示「录音时间到」，长句尾部被截断时不再静默丢音。
+- **屏幕感知（说「这个」）**：指令提到屏幕内容时（「这个报错是什么」「看看我的屏幕」「帮我把这个窗口关了」），松键后自动截一张屏，会话先用 `read_image` 看图再回答——不用描述当前在哪个窗口；截图写临时目录，回合结束即删，不留存、不上传。宿主无「屏幕录制」权限时自动退化为纯文本指令。
+- **口语取消**：整句「算了 / 取消 / 不要了」不进入会话，直接轻声应「好的」，不再污染固定会话上下文。
+- **长期记忆**：会话契约要求先读 `~/.dsh/nico/memory.md` 再回答；说「记住…」或出现值得记住的信息（计划、截止日期、偏好、称呼），会话自动往该文件追加一行带日期的记录，过期记忆自动清理。纯本地文件：直接打开看、改、删。说「清空记忆 / 忘掉之前的话」即删文件重忘；「清空会话」仍是轮换会话，两者互不干扰。
+- **免提模式**：GUI 开启（或 `NICO_HANDS_FREE=1`）后，每条回复播完自动重开录音，说完停顿约 1 秒（ffmpeg silencedetect）自动提交，无需按键；按住右 ⌘ 仍可随时提前提交。
 - **tier-1 能力**：文件/shell 操作（整理桌面、找文件、转格式）零安装。
 
 ## 安装
@@ -88,10 +95,12 @@ GUI「Nico 语音」页操作：检测 / 部署 / 启动 / 停止，进度见 `~
 
 | 文件 | 内容 |
 |---|---|
-| `~/.dsh/nico/apply.log` | 插件生命周期、语音识别原文、TTS 结果取证（pcm/sentences/wav/say 各路径结果与耗时） |
+| `~/.dsh/nico/apply.log` | 插件生命周期、语音识别原文、云端 ASR 回退原因、TTS 结果取证（pcm/sentences/wav/say 各路径结果与耗时） |
 | `~/.dsh/nico/cosyvoice/server.log` | TTS 服务：合成 rtf、warmup、traceback |
 | `~/.dsh/nico/cosyvoice/deploy.log` | 部署编排进度 |
 | `~/.dsh/nico/tap_events.log` | 热键原始事件（`NICO_TAP_DEBUG=1` 开启，用于映射蓝牙耳机按键） |
+| `~/.dsh/nico/corrections.json` | 热词修正表（`{"误听词": "正确词"}`），改动即时生效，无需重启 |
+| `~/.dsh/nico/memory.md` | 长期记忆（带日期的单行记录），会话每轮先读；可直接编辑，说「清空记忆」即删 |
 
 ## CLI
 
@@ -102,6 +111,7 @@ nico chat 你好                # 文本直发（调试）
 nico daemon                   # 常驻：按住右⌘说话（需输入监控授权）
 nico sid                      # 显示/创建固定会话
 nico new                      # 丢弃固定会话（下一条指令开新会话）
+nico words                    # 查看热词修正表（GUI「Nico 语音」页亦可编辑）
 nico setup                    # 抽取 sherpa-onnx 运行时
 ```
 
@@ -120,6 +130,8 @@ nico setup                    # 抽取 sherpa-onnx 运行时
 | `NICO_POS_FILE` | `~/.dsh/nico/bubble_pos.json` | 人物窗位置记忆 |
 | `NICO_SPRITE_DIR` | rt/sprite | 鲸鱼娘表情立绘 |
 | `NICO_LIVE2D_SRC` | 插件同级 live2d 仓库 | overlay 部署素材源 |
+| `NICO_VAD_THRESHOLD` | `0.012` | 静音判定 RMS 阈值（20ms 帧），麦克风增益异常时可调 |
+| `NICO_HANDS_FREE` | 关 | `1` 开启免提模式（CLI 守护场景；GUI 走设置开关） |
 | `NICO_TAP_DEBUG` | 关 | `1` 记录热键原始事件 |
 
 ## Cordis 插件契约
@@ -133,15 +145,17 @@ nico setup                    # 抽取 sherpa-onnx 运行时
 ## 测试与验证
 
 ```sh
-node --test        # 44 项：协议/媒体/客户端注册/会话轮换/TTS 打断/接线冒烟
+node --test        # 88 项：协议/分步进度/媒体/客户端注册/会话轮换/TTS 打断/接线冒烟
 ```
 
 overlay 几何、单实例锁、真实按键 hold-to-talk 等宿主行为需人工验证（驱动脚本 `test/post-*.swift`）。
 
 ## 已知限制
 
-- 语音流程默认 `--approval-policy never`：审批门操作直接执行/拒绝，不会挂起。
+- 语音流程默认 `--approval-policy never`：审批门操作直接执行/拒绝，不会挂起。实测 headless 下 `--approval-policy ask` 也无法做语音确认回路：审批请求 fail-closed（`SANDBOX_ESCALATION_UNAVAILABLE`，headless 无审批 answerer 通道），交互式确认需 DSH 核心支持，插件层无法补齐。
+- 屏幕感知依赖宿主的「屏幕录制」权限（DSH 桌面应用 / NicoDaemon.app）；无权限时截屏失败，指令仍按纯文本执行。
 - 热键 tap 只能看到标准 HID 事件；厂商私有 report 的耳机按键需 `hidutil monitor` 抓取。
 - 说话口型为节奏假口型；RMS 驱动留待接入音频分析。
+- 免提模式的 silencedetect 断句参数（-35dB / 1s）为经验值，需按真实麦克风环境调优（噪声大的环境可改用更短静音窗或提高阈值）。
 - overlay 素材 CDN 下载无断点续传（脚本为原子部署，可中断重跑）。
 - RTF 当前 ~1.6（MPS）/ ~3（CPU），长回复的播报总时长仍大于合成时长——真·实时需 RTF<1（等 torch MPS 进一步成熟或换更快的引擎）。
