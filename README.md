@@ -4,6 +4,10 @@
 
 [English](README.en.md)
 
+<p align="center">
+  <img src="assets/readme/hero-zh.png" alt="dsh-nico：按住右 Command 说一句，本地 AI 替我操作电脑">
+</p>
+
 ## 架构总览
 
 ```
@@ -36,6 +40,9 @@
 - **情感音色**：AISHELL-3 参考音色 + CosyVoice2 instruct2 情感指令（如「用开心的语气说」），GUI 下拉选择。
 - **热词修正表**：`~/.dsh/nico/corrections.json` 写 `{"误听词": "正确词"}`，STT 结果在进入会话前替换（长词优先），专有名词与同音字误听不再需要重说。
 - **Live2D 悬浮窗**：双 NSPanel（人物窗 + 毛玻璃气泡窗）驱动七态（listening/thinking/working/start/speaking/end/fail），人物常驻可拖动、位置记忆；「新会话」原生按钮钉在人物头部旁。
+
+  <img src="assets/readme/overlay.png" width="240" alt="实机截图：人物窗常驻桌面，头顶是「新会话」按钮">
+
 - **任务动作清单**：气泡的 working 态直接列出实际做了什么（读取 voice.mjs、改流式解析、跑测试，✓/●/○），提示行写当前动作「正在做：…」——不显示序号、比例或进度条。清单由会话用 `todo_write` 维护；未用清单时回退为最近几步工具动作。事件来自 headless `--json` 流，不朗读、不打断播报，任务结束随即收起。
 - **录音上限提示**：录音达到上限（默认 30s）自动停止并语音/气泡提示「录音时间到」，长句尾部被截断时不再静默丢音。
 - **屏幕感知（说「这个」）**：指令提到屏幕内容时（「这个报错是什么」「看看我的屏幕」「帮我把这个窗口关了」），松键后自动截一张屏，会话先用 `read_image` 看图再回答——不用描述当前在哪个窗口；截图写临时目录，回合结束即删，不留存、不上传。宿主无「屏幕录制」权限时自动退化为纯文本指令。
@@ -146,7 +153,7 @@ nico setup                    # 抽取 sherpa-onnx 运行时
 ## 测试与验证
 
 ```sh
-node --test        # 88 项：协议/分步进度/媒体/客户端注册/会话轮换/TTS 打断/接线冒烟
+node --test        # 93 项：协议/分步进度/媒体/客户端注册/会话轮换/TTS 打断/接线冒烟
 ```
 
 overlay 几何、单实例锁、真实按键 hold-to-talk 等宿主行为需人工验证（驱动脚本 `test/post-*.swift`）。

@@ -21,6 +21,7 @@
     "scripts",
     "assets/voices",
     "assets/sprite",
+    "assets/readme",
     "native/binding.gyp",
     "native/hotkey_tap.mm",
     "native/bubble.swift",

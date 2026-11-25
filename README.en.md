@@ -4,6 +4,10 @@
 
 [中文](README.md)
 
+<p align="center">
+  <img src="assets/readme/hero-en.png" alt="dsh-nico: hold right Command, say a sentence, and a local AI runs your computer">
+</p>
+
 ## Architecture
 
 ```
@@ -35,6 +39,9 @@ Two host modes share one voice loop (`lib/voice.mjs`):
 - **Neural TTS**: resident CosyVoice2-0.5B service (model loaded once), **server-side streaming playback** — sentence-buffered synthesis, chunks pushed straight into a persistent `sounddevice.OutputStream` (CoreAudio); first audio in ~3-5s; graceful fallback chain (whole-wav + afplay → macOS `say`). A new task immediately interrupts in-flight playback (generation bump + queue clear = instant silence).
 - **Emotion voices**: AISHELL-3 reference voices + CosyVoice2 instruct2 emotion directives (e.g. "say it happily"), picked in the GUI.
 - **Live2D overlay**: dual NSPanels (character + frosted bubble) driven through seven states (listening/thinking/working/start/speaking/end/fail); persistent draggable character with position memory; the native "New Session" button pins next to the head.
+
+  <img src="assets/readme/overlay.png" width="240" alt="Real screenshot: the character window stays on the desktop, New Session button above her head">
+
 - **Live action list**: the bubble's working state lists what is actually being done — read voice.mjs, switch to streaming, run tests (✓/●/○) — with a "Doing: …" hint: no ordinals, ratios or progress bar. The list comes from the session's `todo_write`; without one it falls back to the latest tool actions. Events come from the headless `--json` stream; they are never spoken and never interrupt playback, and collapse when the task ends.
 - **Screen awareness ("say this")**: when a command refers to what is on screen ("what is this error", "look at my screen", "close this window for me"), releasing the key captures one screenshot; the session reads it with `read_image` before answering — no describing which window you are in. The capture goes to a per-use temp dir and is deleted when the turn ends; it is never kept or uploaded. Without the host's Screen Recording permission it degrades to a text-only command.
 - **Spoken cancellation**: a whole-utterance "算了 / 取消 / never mind" never reaches the session — she just answers "好的" (okay), so the fixed context stays clean.
@@ -137,7 +144,7 @@ nico setup                    # extract the sherpa-onnx runtime
 ## Tests
 
 ```sh
-node --test        # 88 tests: protocol / step progress / media / client registration / session rotation / TTS interrupt / wiring smoke
+node --test        # 93 tests: protocol / step progress / media / client registration / session rotation / TTS interrupt / wiring smoke
 ```
 
 Host behaviors (overlay geometry, single-instance lock, real-key hold-to-talk) need manual verification (driver scripts `test/post-*.swift`).
